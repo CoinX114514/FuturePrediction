@@ -1,0 +1,38 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pandas>=2.2.0
+numpy>=2.0.0
+python-multipart>=0.0.9
+pydantic>=2.10.0
+python-dotenv>=1.0.0
+
+# 数据库相关
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+alembic>=1.13.0
+
+# 认证相关
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.9
+
+# Redis 缓存
+redis>=5.0.0
+hiredis>=2.2.0
+
+# 异步任务队列
+celery>=5.3.0
+
+# WebSocket 支持
+websockets>=12.0
+
+# 测试相关
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0
+
+# 根据您的 Kronos 模型需求添加以下依赖之一：
+# torch==2.1.0  # 如果使用 PyTorch
+# tensorflow==2.15.0  # 如果使用 TensorFlow
+# 或其他模型推理库
+
