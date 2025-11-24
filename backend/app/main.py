@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.routers import upload, prediction, auth
+from app.routers import auth
 
 # 创建 FastAPI 应用实例
 # 使用中文描述和标签以便于API文档显示
@@ -31,8 +31,6 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["用户认证"])
-app.include_router(upload.router, prefix="/api", tags=["文件上传"])
-app.include_router(prediction.router, prefix="/api", tags=["预测"])
 
 
 @app.get("/")

@@ -1,7 +1,7 @@
 /** 板块榜单组件。
-
-显示板块排名，点击板块后显示该板块内合约的排名。
-*/
+ *
+ * 显示板块排名，点击板块后显示该板块内合约的排名。
+ */
 
 import { useState } from 'react'
 
@@ -52,6 +52,8 @@ interface RankingsProps {
 export default function Rankings({ isMember = false }: RankingsProps) {
   /** 当前选中的板块。 */
   const [selectedSector, setSelectedSector] = useState<Sector | null>(null)
+  /** 搜索关键词 */
+  const [searchTerm, setSearchTerm] = useState('')
 
   /** Mock 板块数据。 */
   const mockSectors: Sector[] = [
@@ -90,7 +92,7 @@ export default function Rankings({ isMember = false }: RankingsProps) {
   /** 排序后的板块列表。 */
   const sortedSectors = [...mockSectors].sort((a, b) => 
     b.changePercent - a.changePercent
-  )
+  ).filter(s => s.sectorName.includes(searchTerm) || s.sectorCode.includes(searchTerm.toUpperCase()))
 
   /** 显示的板块数量。 */
   const displaySectors = isMember ? sortedSectors : sortedSectors.slice(0, 3)
@@ -101,7 +103,7 @@ export default function Rankings({ isMember = false }: RankingsProps) {
   /** 排序后的合约列表（按涨跌幅）。 */
   const sortedContracts = [...contracts].sort((a, b) => 
     b.changePercent - a.changePercent
-  )
+  ).filter(c => c.contractName.includes(searchTerm) || c.contractCode.includes(searchTerm.toUpperCase()))
 
   /**
    * 处理板块点击。
@@ -110,6 +112,7 @@ export default function Rankings({ isMember = false }: RankingsProps) {
    */
   const handleSectorClick = (sector: Sector) => {
     setSelectedSector(sector)
+    setSearchTerm('') // 重置搜索
   }
 
   /**
@@ -117,176 +120,166 @@ export default function Rankings({ isMember = false }: RankingsProps) {
    */
   const handleBack = () => {
     setSelectedSector(null)
+    setSearchTerm('')
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      {/* 标题 */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-800">板块榜单</h3>
-        {selectedSector && (
-          <button
-            onClick={handleBack}
-            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-          >
-            <span>←</span> 返回板块列表
-          </button>
-        )}
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-0 overflow-hidden h-full flex flex-col">
+      {/* 标题栏 */}
+      <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-bold text-gray-800">
+            {selectedSector ? selectedSector.sectorName : '板块风云榜'}
+          </h3>
+          {selectedSector && (
+            <button
+              onClick={handleBack}
+              className="text-xs text-blue-600 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded flex items-center gap-1 hover:bg-blue-100 transition-colors"
+            >
+              <span>←</span> 返回
+            </button>
+          )}
+        </div>
+        
+        {/* 搜索框 */}
+        <div className="relative">
+           <input
+             type="text"
+             placeholder={selectedSector ? `搜索 ${selectedSector.sectorName} 合约...` : "搜索板块..."}
+             value={searchTerm}
+             onChange={(e) => setSearchTerm(e.target.value)}
+             className="w-full pl-8 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+           />
+           <svg className="w-4 h-4 text-gray-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+           </svg>
+        </div>
       </div>
 
       {/* 权限提示 */}
       {!selectedSector && !isMember && (
-        <div className="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-2 rounded-lg text-sm">
-          <p>普通用户仅可查看前 3 个板块，升级会员查看全部板块</p>
+        <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+          <p className="text-xs text-amber-700 flex items-center gap-2">
+             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+             </svg>
+             普通用户仅展示前 3 名，会员查看全部
+          </p>
         </div>
       )}
 
-      {!selectedSector ? (
-        /* 板块列表（第一级） */
-        <div className="space-y-2">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 px-4 text-sm font-medium text-gray-700">排名</th>
-                  <th className="text-left py-2 px-4 text-sm font-medium text-gray-700">板块名称</th>
-                  <th className="text-right py-2 px-4 text-sm font-medium text-gray-700">涨跌幅</th>
-                  <th className="text-right py-2 px-4 text-sm font-medium text-gray-700">成交额(万)</th>
-                  <th className="text-right py-2 px-4 text-sm font-medium text-gray-700">合约数</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displaySectors.map((sector, index) => {
-                  const isPositive = sector.changePercent >= 0
-                  return (
-                    <tr
-                      key={sector.sectorId}
-                      className="border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors"
-                      onClick={() => handleSectorClick(sector)}
-                    >
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded ${
-                          index < 3 ? 'bg-red-100 text-red-600 font-bold' : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {index + 1}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-sm font-medium text-gray-800">
-                        {sector.sectorName}
-                        <span className="ml-2 text-xs text-gray-500">({sector.sectorCode})</span>
-                      </td>
-                      <td className={`py-3 px-4 text-sm text-right font-medium ${
-                        isPositive ? 'text-red-600' : 'text-green-600'
-                      }`}>
-                        {isPositive ? '+' : ''}{sector.changePercent.toFixed(2)}%
-                      </td>
-                      <td className="py-3 px-4 text-sm text-right text-gray-800">
-                        {sector.turnover.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-right text-gray-600">
-                        {sector.contractCount}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        /* 板块内合约列表（第二级） */
-        <div>
-          {/* 板块信息卡片 */}
-          <div className="mb-4 bg-blue-50 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-gray-800 mb-2">
-              {selectedSector.sectorName} ({selectedSector.sectorCode})
-            </h4>
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="text-gray-600">板块涨跌幅</p>
-                <p className={`text-lg font-bold ${
-                  selectedSector.changePercent >= 0 ? 'text-red-600' : 'text-green-600'
-                }`}>
-                  {selectedSector.changePercent >= 0 ? '+' : ''}
-                  {selectedSector.changePercent.toFixed(2)}%
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-600">板块成交额</p>
-                <p className="text-lg font-bold text-gray-800">
-                  {selectedSector.turnover.toLocaleString()} 万
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-600">合约数量</p>
-                <p className="text-lg font-bold text-gray-800">
-                  {selectedSector.contractCount}
-                </p>
-              </div>
-            </div>
-          </div>
+      <div className="flex-1 overflow-y-auto">
+         {!selectedSector ? (
+           /* 板块列表（第一级） */
+           <table className="w-full">
+             <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
+               <tr>
+                 <th className="text-left py-2 px-4 font-medium">排名</th>
+                 <th className="text-left py-2 px-4 font-medium">板块</th>
+                 <th className="text-right py-2 px-4 font-medium">涨幅</th>
+               </tr>
+             </thead>
+             <tbody>
+               {displaySectors.map((sector, index) => {
+                 const isPositive = sector.changePercent >= 0
+                 return (
+                   <tr
+                     key={sector.sectorId}
+                     className="border-b border-gray-50 hover:bg-blue-50/50 cursor-pointer transition-colors group"
+                     onClick={() => handleSectorClick(sector)}
+                   >
+                     <td className="py-3 px-4 text-sm text-gray-600 w-16">
+                       <span className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-bold ${
+                         index < 3 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'
+                       }`}>
+                         {index + 1}
+                       </span>
+                     </td>
+                     <td className="py-3 px-4 text-sm font-medium text-gray-800">
+                       <div className="flex flex-col">
+                          <span>{sector.sectorName}</span>
+                          <span className="text-[10px] text-gray-400 font-normal group-hover:text-blue-400">{sector.sectorCode}</span>
+                       </div>
+                     </td>
+                     <td className={`py-3 px-4 text-sm text-right font-bold ${
+                       isPositive ? 'text-red-600' : 'text-green-600'
+                     }`}>
+                       {isPositive ? '+' : ''}{sector.changePercent.toFixed(2)}%
+                     </td>
+                   </tr>
+                 )
+               })}
+             </tbody>
+           </table>
+         ) : (
+           /* 板块内合约列表（第二级） */
+           <div>
+             {/* 头部摘要 */}
+             <div className="p-3 bg-blue-50/30 grid grid-cols-3 gap-2 border-b border-blue-100">
+                 <div className="text-center">
+                    <p className="text-[10px] text-gray-500">涨跌幅</p>
+                    <p className={`font-bold text-sm ${selectedSector.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                       {selectedSector.changePercent >= 0 ? '+' : ''}{selectedSector.changePercent}%
+                    </p>
+                 </div>
+                 <div className="text-center border-l border-gray-200">
+                    <p className="text-[10px] text-gray-500">成交额</p>
+                    <p className="font-bold text-gray-800 text-sm">{selectedSector.turnover > 10000 ? (selectedSector.turnover/10000).toFixed(1)+'亿' : selectedSector.turnover+'万'}</p>
+                 </div>
+                 <div className="text-center border-l border-gray-200">
+                    <p className="text-[10px] text-gray-500">合约数</p>
+                    <p className="font-bold text-gray-800 text-sm">{selectedSector.contractCount}</p>
+                 </div>
+             </div>
 
-          {/* 合约排名表格 */}
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 px-4 text-sm font-medium text-gray-700">排名</th>
-                  <th className="text-left py-2 px-4 text-sm font-medium text-gray-700">合约代码</th>
-                  <th className="text-left py-2 px-4 text-sm font-medium text-gray-700">合约名称</th>
-                  <th className="text-right py-2 px-4 text-sm font-medium text-gray-700">当前价</th>
-                  <th className="text-right py-2 px-4 text-sm font-medium text-gray-700">涨跌幅</th>
-                  <th className="text-right py-2 px-4 text-sm font-medium text-gray-700">成交额(万)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedContracts.map((contract, index) => {
-                  const isPositive = contract.changePercent >= 0
-                  return (
-                    <tr
-                      key={contract.contractCode}
-                      className="border-b border-gray-100 hover:bg-gray-50"
-                    >
-                      <td className="py-2 px-4 text-sm text-gray-600">
-                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded ${
-                          index < 3 ? 'bg-red-100 text-red-600 font-bold' : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {index + 1}
-                        </span>
-                      </td>
-                      <td className="py-2 px-4 text-sm font-medium text-gray-800">
-                        {contract.contractCode}
-                      </td>
-                      <td className="py-2 px-4 text-sm text-gray-600">{contract.contractName}</td>
-                      <td className="py-2 px-4 text-sm text-right text-gray-800">
-                        {contract.currentPrice.toLocaleString()}
-                      </td>
-                      <td className={`py-2 px-4 text-sm text-right font-medium ${
-                        isPositive ? 'text-red-600' : 'text-green-600'
-                      }`}>
-                        {isPositive ? '+' : ''}{contract.changePercent.toFixed(2)}%
-                      </td>
-                      <td className="py-2 px-4 text-sm text-right text-gray-800">
-                        {contract.turnover.toLocaleString()}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+             <table className="w-full">
+               <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
+                 <tr>
+                   <th className="text-left py-2 px-4 font-medium">合约</th>
+                   <th className="text-right py-2 px-4 font-medium">最新价</th>
+                   <th className="text-right py-2 px-4 font-medium">涨跌幅</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 {sortedContracts.map((contract, index) => {
+                   const isPositive = contract.changePercent >= 0
+                   return (
+                     <tr
+                       key={contract.contractCode}
+                       className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                     >
+                       <td className="py-2 px-4 text-sm font-medium text-gray-800">
+                         <div className="flex flex-col">
+                            <span>{contract.contractName}</span>
+                            <span className="text-[10px] text-gray-400 font-normal">{contract.contractCode}</span>
+                         </div>
+                       </td>
+                       <td className="py-2 px-4 text-sm text-right text-gray-800 font-mono">
+                         {contract.currentPrice.toLocaleString()}
+                       </td>
+                       <td className={`py-2 px-4 text-sm text-right font-bold ${
+                         isPositive ? 'text-red-600' : 'text-green-600'
+                       }`}>
+                         {isPositive ? '+' : ''}{contract.changePercent.toFixed(2)}%
+                       </td>
+                     </tr>
+                   )
+                 })}
+               </tbody>
+             </table>
 
-          {sortedContracts.length === 0 && (
-            <div className="text-center py-8 text-gray-400">
-              <p>该板块暂无合约数据</p>
-            </div>
-          )}
-        </div>
-      )}
+             {sortedContracts.length === 0 && (
+               <div className="text-center py-8 text-gray-400">
+                 <p>无匹配合约</p>
+               </div>
+             )}
+           </div>
+         )}
+      </div>
 
       {/* 底部提示 */}
-      <div className="mt-4 text-center text-xs text-gray-400">
-        <p>数据每 5 秒自动刷新（等待后端 API 接入）</p>
+      <div className="p-2 bg-gray-50 border-t border-gray-100 text-center text-[10px] text-gray-400">
+        数据每 5 秒自动刷新
       </div>
     </div>
   )

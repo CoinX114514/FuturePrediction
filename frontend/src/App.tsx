@@ -1,13 +1,16 @@
 /** 应用主组件。
-
-这是应用的根组件，负责路由配置和全局状态管理。
-*/
+ *
+ * 这是应用的根组件，负责路由配置和全局状态管理。
+ */
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { isAuthenticated } from './services/authService'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
+import AdminPublish from './pages/AdminPublish'
+import Account from './pages/Account'
+import SignalDetail from './pages/SignalDetail'
 import './App.css'
 
 /** 是否为开发模式。 */
@@ -41,6 +44,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * @returns JSX 元素。
  */
 function App() {
+  console.log("Rendering App Component");
   return (
     <BrowserRouter>
       <Routes>
@@ -56,6 +60,36 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 管理员发布页 */}
+        <Route
+          path="/admin/publish"
+          element={
+            <ProtectedRoute>
+              <AdminPublish />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 账户页 */}
+        <Route
+          path="/account"
+          element={
+            <ProtectedRoute>
+              <Account />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 详情页 */}
+        <Route
+          path="/signal/:id"
+          element={
+            <ProtectedRoute>
+              <SignalDetail />
             </ProtectedRoute>
           }
         />

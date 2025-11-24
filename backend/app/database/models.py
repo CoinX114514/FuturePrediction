@@ -183,8 +183,6 @@ class PredictionTask(Base):
     prediction_type = Column(String(20), default="kronos_daily")
     prediction_horizon = Column(Integer, default=1)  # 预测步长(天)
     prediction_paths = Column(Integer, default=10)  # 路径数量
-    input_data_source = Column(String(20))  # api/csv/manual
-    csv_file_url = Column(String(500))
     status = Column(String(20), default="pending", index=True)  # pending/processing/completed/failed
     created_at = Column(DateTime, server_default=func.now())
     started_at = Column(DateTime)
