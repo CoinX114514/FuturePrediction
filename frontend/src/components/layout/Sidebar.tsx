@@ -6,15 +6,19 @@ interface SidebarItem {
   adminOnly?: boolean
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  user?: any
+}
+
+export default function Sidebar({ user }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   
-  // 模拟管理员权限，实际应从 context/props 获取
-  const isAdmin = true 
+  // 检查是否为管理员 (user_role >= 3)
+  const isAdmin = user?.user_role >= 3 
 
   const items: SidebarItem[] = [
-    { name: '(管理员) 发布', path: '/admin/publish', adminOnly: true },
+    { name: '发布', path: '/admin/publish', adminOnly: true },
     { name: '主页', path: '/dashboard' },
     { name: '搜索合约', path: '/search' },
     { name: '查看账户', path: '/account' },

@@ -241,7 +241,7 @@ export default function Rankings({ isMember = false }: RankingsProps) {
                  </tr>
                </thead>
                <tbody>
-                 {sortedContracts.map((contract, index) => {
+                 {sortedContracts.map((contract) => {
                    const isPositive = contract.changePercent >= 0
                    return (
                      <tr

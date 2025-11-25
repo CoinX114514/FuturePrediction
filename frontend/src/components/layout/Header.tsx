@@ -4,6 +4,26 @@ interface HeaderProps {
 }
 
 export default function Header({ user }: HeaderProps) {
+  /** 根据用户角色获取角色显示名称。
+   * 
+   * @param userRole - 用户角色ID（1=普通用户, 2=VIP会员, 3=超级管理员）
+   * @returns 角色显示名称
+   */
+  const getRoleName = (userRole?: number): string => {
+    console.log('[Header] 当前用户角色:', userRole, '用户对象:', user)
+    if (!userRole) return '普通用户'
+    switch (userRole) {
+      case 1:
+        return '普通用户'
+      case 2:
+        return 'VIP会员'
+      case 3:
+        return '超级管理员'
+      default:
+        return '普通用户'
+    }
+  }
+
   return (
     <header className="h-16 bg-blue-600 flex items-center justify-between px-8 fixed top-0 right-0 left-0 z-30 shadow-md">
       {/* Left: Logo/System Name */}
@@ -12,7 +32,7 @@ export default function Header({ user }: HeaderProps) {
           Q
         </div>
         <h1 className="text-xl font-bold text-white tracking-wide">
-          XX期货预测系统
+          Mambo期货预测
         </h1>
       </div>
 
@@ -26,8 +46,8 @@ export default function Header({ user }: HeaderProps) {
           <span className="w-px h-4 bg-blue-400/50"></span>
           <span className="text-green-300">状态: 在线</span>
           <span className="w-px h-4 bg-blue-400/50"></span>
-          <span className="text-yellow-300">等级: {user?.user_role >= 2 ? 'VIP会员' : '普通用户'}</span>
-          {user?.user_role >= 2 && (
+          <span className="text-yellow-300">等级: {getRoleName(user?.user_role)}</span>
+          {user?.user_role === 2 && (
             <>
               <span className="w-px h-4 bg-blue-400/50"></span>
               <span className="text-gray-200">VIP到期: 2025-12-31</span>

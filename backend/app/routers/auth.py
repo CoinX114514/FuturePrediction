@@ -6,7 +6,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, validator
 from sqlalchemy.orm import Session
@@ -221,13 +221,15 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/logout")
 async def logout(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
     db: Session = Depends(get_db),
 ):
     """用户登出接口。
 
+    即使 Token 无效也能执行登出操作（用于清除无效 Token）。
+
     Args:
-        credentials: HTTP Bearer Token 凭证。
+        credentials: HTTP Bearer Token 凭证（可选）。
         db: 数据库会话。
 
     Returns:
@@ -235,17 +237,24 @@ async def logout(
     """
     try:
         auth_service = AuthService(db)
-        token = credentials.credentials
-        auth_service.invalidate_session(token)
+        
+        # 如果有 Token，尝试使会话失效
+        if credentials:
+            token = credentials.credentials
+            try:
+                auth_service.invalidate_session(token)
+            except Exception:
+                # Token 无效或会话不存在，忽略错误继续执行
+                pass
 
         return JSONResponse(
             content={"message": "登出成功"},
         )
 
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"登出失败: {str(e)}",
+        # 即使出错也返回成功，确保前端能清除本地 Token
+        return JSONResponse(
+            content={"message": "登出成功"},
         )
 
 

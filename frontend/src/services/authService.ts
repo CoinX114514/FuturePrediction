@@ -14,6 +14,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000, // 10秒超时
 })
 
 /**
@@ -150,7 +151,12 @@ export async function register(data: RegisterRequest) {
 export async function logout() {
   try {
     await apiClient.post('/api/v1/auth/logout')
+  } catch (error) {
+    // 即使后端登出失败，也清除本地 Token
+    // 这样可以处理 Token 已过期的情况
+    console.warn('登出请求失败，但已清除本地 Token:', error)
   } finally {
+    // 无论成功与否，都清除本地 Token
     removeToken()
   }
 }
@@ -161,8 +167,24 @@ export async function logout() {
  * @returns 用户信息。
  */
 export async function getCurrentUser(): Promise<UserInfo> {
-  const response = await apiClient.get('/api/v1/auth/me')
-  return response.data
+  console.log('[authService] 开始获取用户信息...')
+  const startTime = Date.now()
+  
+  try {
+    const response = await apiClient.get('/api/v1/auth/me', {
+      timeout: 5000, // 5秒超时
+    })
+    const elapsed = Date.now() - startTime
+    console.log(`[authService] 获取用户信息成功，耗时: ${elapsed}ms`, response.data)
+    return response.data
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime
+    console.error(`[authService] 获取用户信息失败，耗时: ${elapsed}ms`, error)
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('请求超时，请检查网络连接')
+    }
+    throw error
+  }
 }
 
 /**

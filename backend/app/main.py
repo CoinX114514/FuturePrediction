@@ -7,14 +7,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.routers import auth
+from app.routers import (
+    auth,
+    posts,
+    drafts,
+    collections,
+    browse_history,
+)
 
 # 创建 FastAPI 应用实例
 # 使用中文描述和标签以便于API文档显示
 app = FastAPI(
     title="期货价格趋势预测 API",
-    description="基于 Kronos 模型的期货价格趋势预测服务",
-    version="0.1.0",
+    description="基于信号流的期货交易建议平台",
+    version="0.2.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -31,6 +37,10 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["用户认证"])
+app.include_router(posts.router, prefix="/api/v1/posts", tags=["帖子"])
+app.include_router(drafts.router, prefix="/api/v1/drafts", tags=["草稿"])
+app.include_router(collections.router, prefix="/api/v1/collections", tags=["收藏"])
+app.include_router(browse_history.router, prefix="/api/v1/browse-history", tags=["浏览历史"])
 
 
 @app.get("/")
@@ -58,6 +68,7 @@ async def global_exception_handler(request, exc):
     """全局异常处理器。
 
     捕获所有未处理的异常并返回友好的错误响应。
+    确保错误响应也包含 CORS 头。
 
     Args:
         request: FastAPI 请求对象。
@@ -66,12 +77,21 @@ async def global_exception_handler(request, exc):
     Returns:
         JSONResponse: 包含错误信息的 JSON 响应。
     """
+    import traceback
+    # 记录详细错误信息（在生产环境中应该记录到日志文件）
+    print(f"全局异常处理器捕获错误: {type(exc).__name__}: {str(exc)}")
+    traceback.print_exc()
+    
     return JSONResponse(
         status_code=500,
         content={
             "error": "服务器内部错误",
             "message": str(exc),
             "detail": "请检查您的请求格式或联系管理员",
+        },
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:5173",
+            "Access-Control-Allow-Credentials": "true",
         },
     )
 

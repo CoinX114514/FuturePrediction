@@ -35,12 +35,25 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-console.log("Mounting React Root...")
+console.log("[main.tsx] 开始挂载 React 根组件...")
+const startTime = Date.now()
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>,
-)
+// 检查 root 元素是否存在
+const rootElement = document.getElementById('root')
+if (!rootElement) {
+  console.error("[main.tsx] 错误: 找不到 #root 元素！")
+  document.body.innerHTML = '<div style="padding: 20px; color: red;">错误: 找不到 #root 元素</div>'
+} else {
+  console.log("[main.tsx] 找到 #root 元素，开始渲染...")
+  
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </React.StrictMode>,
+  )
+  
+  const elapsed = Date.now() - startTime
+  console.log(`[main.tsx] React 根组件挂载完成，耗时: ${elapsed}ms`)
+}

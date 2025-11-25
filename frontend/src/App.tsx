@@ -44,9 +44,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * @returns JSX 元素。
  */
 function App() {
-  console.log("Rendering App Component");
-  return (
-    <BrowserRouter>
+  const renderStart = Date.now()
+  console.log("[App] 开始渲染 App 组件...")
+  
+  try {
+    const app = (
+      <BrowserRouter>
       <Routes>
         {/* 登录页 */}
         <Route path="/login" element={<Login />} />
@@ -101,7 +104,20 @@ function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
-  )
+    )
+    
+    const elapsed = Date.now() - renderStart
+    console.log(`[App] App 组件渲染完成，耗时: ${elapsed}ms`)
+    return app
+  } catch (error) {
+    console.error("[App] 渲染 App 组件时出错:", error)
+    return (
+      <div style={{ padding: '20px', color: 'red' }}>
+        <h1>应用加载错误</h1>
+        <pre>{String(error)}</pre>
+      </div>
+    )
+  }
 }
 
 export default App
