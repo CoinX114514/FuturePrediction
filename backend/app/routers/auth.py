@@ -48,6 +48,9 @@ class RegisterRequest(BaseModel):
             ValueError: 当手机号格式不正确时抛出。
         """
         # 简单的手机号验证（11位数字）
+        # 注意：验证逻辑已经在服务层实现，这里只做基本检查
+        if not v or not isinstance(v, str):
+            raise ValueError("手机号不能为空")
         if not v.isdigit() or len(v) != 11:
             raise ValueError("手机号必须是11位数字")
         return v
@@ -65,6 +68,9 @@ class RegisterRequest(BaseModel):
         Raises:
             ValueError: 当密码不符合要求时抛出。
         """
+        # 注意：详细的密码验证已经在服务层实现
+        if not v or not isinstance(v, str):
+            raise ValueError("密码不能为空")
         if len(v) < 6:
             raise ValueError("密码长度至少为6位")
         return v
@@ -109,6 +115,8 @@ class LoginRequest(BaseModel):
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     """用户注册接口。
 
+    注册成功后自动创建会话并返回 Token，用户可以直接使用。
+
     Args:
         request: 注册请求数据。
         db: 数据库会话。
@@ -121,21 +129,37 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     """
     try:
         auth_service = AuthService(db)
-        user_data = auth_service.register_user(
+        
+        # 注册新用户（包含数据验证和事务处理）
+        # register_user 现在直接返回 User 对象，避免额外的数据库查询
+        user = auth_service.register_user(
             phone_number=request.phone_number,
             password=request.password,
             email=request.email,
             nickname=request.nickname,
         )
 
-        # 创建会话
-        user = auth_service.get_user_by_id(user_data["user_id"])
-        session_data = auth_service.create_session(user)
+        # 创建会话（自动登录）
+        try:
+            session_data = auth_service.create_session(user)
+        except Exception as e:
+            # 如果创建会话失败，用户已创建但无法自动登录
+            # 这种情况应该很少见，但需要记录
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="注册成功，但创建会话失败，请重新登录",
+            )
 
         return JSONResponse(
             content={
                 "message": "注册成功",
-                "user": user_data,
+                "user": {
+                    "user_id": user.user_id,
+                    "phone_number": user.phone_number,
+                    "email": user.email,
+                    "nickname": user.nickname,
+                    "user_role": user.user_role,
+                },
                 "token": session_data["token"],
                 "token_type": session_data["token_type"],
                 "expires_in": session_data["expires_in"],
@@ -143,15 +167,24 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_201_CREATED,
         )
 
+    except HTTPException:
+        # 重新抛出 HTTPException
+        raise
     except ValueError as e:
+        # 业务逻辑验证错误（如手机号已存在、格式错误等）
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
     except Exception as e:
+        # 其他未预期的错误
+        import traceback
+        error_detail = f"注册失败: {str(e)}"
+        # 在生产环境中，不应该暴露详细的错误信息
+        # 这里可以根据环境变量决定是否显示详细信息
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"注册失败: {str(e)}",
+            detail=error_detail,
         )
 
 

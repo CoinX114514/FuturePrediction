@@ -11,7 +11,11 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        timeout: 10000, // 10秒超时
       },
+    },
+    hmr: {
+      timeout: 10000, // HMR 超时设置
     },
   },
 })

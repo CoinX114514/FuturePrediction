@@ -28,23 +28,31 @@ export default function Dashboard() {
         console.log('[Dashboard] 开始获取用户信息...')
         const startTime = Date.now()
         
-        // 设置超时保护
-        const timeoutId = setTimeout(() => {
-          console.warn('[Dashboard] 获取用户信息超时（5秒）')
-        }, 5000)
-        
         try {
-          const user = await getCurrentUser()
-          clearTimeout(timeoutId)
+          // 使用 Promise.race 添加超时保护
+          const userPromise = getCurrentUser()
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('获取用户信息超时')), 8000)
+          )
+          
+          const user = await Promise.race([userPromise, timeoutPromise])
           const elapsed = Date.now() - startTime
           console.log(`[Dashboard] 用户信息获取成功，耗时: ${elapsed}ms`, user)
           console.log(`[Dashboard] 用户角色: ${user.user_role} (1=普通用户, 2=VIP会员, 3=超级管理员)`)
           setUserInfo(user)
-        } catch (err) {
-          clearTimeout(timeoutId)
+        } catch (err: any) {
           const elapsed = Date.now() - startTime
           console.error(`[Dashboard] 获取用户信息失败，耗时: ${elapsed}ms`, err)
-          // 获取失败时不设置默认值，让页面显示加载状态或错误提示
+          
+          // 如果是认证错误（401）或超时，跳转到登录页
+          if (err?.response?.status === 401 || err?.message?.includes('超时') || err?.code === 'ECONNABORTED') {
+            console.log('[Dashboard] 用户未认证或请求超时，跳转到登录页')
+            navigate('/login')
+            return
+          }
+          
+          // 其他错误，显示错误提示但不阻止页面加载
+          console.warn('[Dashboard] 获取用户信息失败，但继续加载页面')
         }
       } else {
         console.log('[Dashboard] 已有用户信息，跳过获取', userInfo)
@@ -52,7 +60,7 @@ export default function Dashboard() {
     }
     
     fetchUserInfo()
-  }, [userInfo])
+  }, [userInfo, navigate])
 
   /** 从后端获取帖子列表。 */
   useEffect(() => {

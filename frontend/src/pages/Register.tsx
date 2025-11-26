@@ -97,6 +97,7 @@ export default function Register() {
     e.preventDefault()
     setError(null)
 
+    // 前端验证
     if (!validateForm()) {
       return
     }
@@ -111,10 +112,46 @@ export default function Register() {
         nickname: formData.nickname || undefined,
       }
 
-      await register(registerData)
-      navigate('/dashboard')
+      // 调用注册 API（register 函数会自动保存 token）
+      const response = await register(registerData)
+      
+      // 注册成功，token 已自动保存，直接跳转到首页
+      if (response.token) {
+        // 延迟一小段时间让用户看到成功状态
+        setTimeout(() => {
+          navigate('/dashboard')
+        }, 500)
+      } else {
+        // 如果没有 token，跳转到登录页
+        navigate('/login', { 
+          state: { message: '注册成功，请登录' } 
+        })
+      }
     } catch (err: any) {
-      setError(err.response?.data?.detail || '注册失败，请重试')
+      // 处理各种错误情况
+      let errorMessage = '注册失败，请重试'
+      
+      if (err.response) {
+        // 服务器返回的错误
+        const detail = err.response.data?.detail
+        if (detail) {
+          errorMessage = detail
+        } else if (err.response.status === 400) {
+          errorMessage = '请求数据格式错误，请检查输入'
+        } else if (err.response.status === 409) {
+          errorMessage = '手机号或邮箱已被注册'
+        } else if (err.response.status >= 500) {
+          errorMessage = '服务器错误，请稍后重试'
+        }
+      } else if (err.request) {
+        // 请求发送但无响应
+        errorMessage = '网络错误，请检查网络连接'
+      } else if (err.message) {
+        // 其他错误
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }

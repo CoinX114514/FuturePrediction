@@ -172,7 +172,7 @@ export async function getCurrentUser(): Promise<UserInfo> {
   
   try {
     const response = await apiClient.get('/api/v1/auth/me', {
-      timeout: 5000, // 5秒超时
+      timeout: 8000, // 8秒超时，与 Dashboard 的超时时间一致
     })
     const elapsed = Date.now() - startTime
     console.log(`[authService] 获取用户信息成功，耗时: ${elapsed}ms`, response.data)
@@ -180,9 +180,17 @@ export async function getCurrentUser(): Promise<UserInfo> {
   } catch (error: any) {
     const elapsed = Date.now() - startTime
     console.error(`[authService] 获取用户信息失败，耗时: ${elapsed}ms`, error)
-    if (error.code === 'ECONNABORTED') {
+    
+    // 如果是 401 错误，说明 Token 无效，清除本地 Token
+    if (error.response?.status === 401) {
+      removeToken()
+      throw new Error('登录已过期，请重新登录')
+    }
+    
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
       throw new Error('请求超时，请检查网络连接')
     }
+    
     throw error
   }
 }
