@@ -28,6 +28,7 @@ class PostCreateRequest(BaseModel):
     take_profit: Optional[float] = None
     strike_price: Optional[float] = None
     current_price: Optional[float] = None
+    direction: Optional[str] = 'buy'  # 'buy' 做多, 'sell' 做空
     suggestion: Optional[str] = None
     k_line_image: Optional[str] = None
     sector_id: Optional[int] = None
@@ -42,6 +43,7 @@ class PostUpdateRequest(BaseModel):
     take_profit: Optional[float] = None
     strike_price: Optional[float] = None
     current_price: Optional[float] = None
+    direction: Optional[str] = None  # 'buy' 做多, 'sell' 做空
     suggestion: Optional[str] = None
     content: Optional[str] = None
     k_line_image: Optional[str] = None
@@ -86,6 +88,7 @@ async def create_post(
         take_profit=request.take_profit,
         strike_price=request.strike_price,
         current_price=request.current_price,
+        direction=request.direction or 'buy',
         suggestion=request.suggestion,
         k_line_image=request.k_line_image,
         sector_id=request.sector_id,
@@ -105,6 +108,7 @@ async def get_posts(
     page_size: int = Query(20, ge=1, le=100),
     sector_id: Optional[int] = Query(None),
     author_id: Optional[Union[int, str]] = Query(None),
+    search: Optional[str] = Query(None, description="搜索关键词，用于搜索合约代码或标题"),
     current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
@@ -115,6 +119,7 @@ async def get_posts(
         page_size: 每页数量。
         sector_id: 板块ID筛选。
         author_id: 作者ID筛选。如果传入 'current' 字符串，则筛选当前用户的帖子。
+        search: 搜索关键词，用于搜索合约代码或标题。
         current_user: 当前登录用户（可选，用于author_id='current'的情况）。
         db: 数据库会话。
 
@@ -145,6 +150,7 @@ async def get_posts(
         page_size=page_size,
         sector_id=sector_id,
         author_id=actual_author_id,
+        search=search,
     )
 
     return {
@@ -157,6 +163,7 @@ async def get_posts(
                 "stop_loss": float(p.stop_loss),
                 "take_profit": float(p.take_profit) if p.take_profit else None,
                 "current_price": float(p.current_price) if p.current_price else None,
+                "direction": p.direction or 'buy',
                 "suggestion": p.suggestion,
                 "author_id": p.author_id,
                 "author_nickname": p.author.nickname if p.author else None,
@@ -213,6 +220,7 @@ async def get_post_detail(
         "stop_loss": float(post.stop_loss),
         "take_profit": float(post.take_profit) if post.take_profit else None,
         "current_price": float(post.current_price) if post.current_price else None,
+        "direction": post.direction or 'buy',
         "suggestion": post.suggestion,
         "content": post.content,
         "k_line_image": post.k_line_image,
@@ -280,6 +288,7 @@ async def update_post(
         take_profit=request.take_profit,
         strike_price=request.strike_price,
         current_price=request.current_price,
+        direction=request.direction,
         suggestion=request.suggestion,
         content=request.content,
         k_line_image=request.k_line_image,

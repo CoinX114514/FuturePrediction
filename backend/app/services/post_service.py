@@ -6,7 +6,7 @@
 from typing import Optional, List, Dict
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_
+from sqlalchemy import desc, and_, or_, func, case
 
 from app.database.models import Post, User, Sector
 
@@ -35,6 +35,7 @@ class PostService:
         take_profit: Optional[float] = None,
         strike_price: Optional[float] = None,
         current_price: Optional[float] = None,
+        direction: Optional[str] = 'buy',
         suggestion: Optional[str] = None,
         k_line_image: Optional[str] = None,
         sector_id: Optional[int] = None,
@@ -66,6 +67,7 @@ class PostService:
             take_profit=take_profit,
             strike_price=strike_price,
             current_price=current_price,
+            direction=direction or 'buy',
             suggestion=suggestion,
             k_line_image=k_line_image,
             sector_id=sector_id,
@@ -98,6 +100,7 @@ class PostService:
         page_size: int = 20,
         sector_id: Optional[int] = None,
         author_id: Optional[int] = None,
+        search: Optional[str] = None,
     ) -> Dict:
         """获取帖子列表。
 
@@ -106,19 +109,51 @@ class PostService:
             page_size: 每页数量。
             sector_id: 板块ID筛选（可选）。
             author_id: 作者ID筛选（可选）。
+            search: 搜索关键词，用于搜索合约代码或标题（可选）。
 
         Returns:
             dict: 包含帖子列表和分页信息的字典。
         """
+        from sqlalchemy import or_, func
+        
         query = self.db.query(Post).filter(Post.status == 1)
 
         if sector_id:
             query = query.filter(Post.sector_id == sector_id)
         if author_id:
             query = query.filter(Post.author_id == author_id)
+        
+        # 搜索功能：按合约代码或标题搜索
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Post.contract_code.ilike(search_pattern),
+                    Post.title.ilike(search_pattern),
+                )
+            )
 
-        # 按发布时间倒序排列
-        query = query.order_by(desc(Post.publish_time))
+        # 排序逻辑：
+        # 1. 优先显示有建议（suggestion不为空且不是"待管理员编辑建议"）的帖子
+        # 2. 按更新时间（updated_at）倒序排列，如果updated_at为空则按publish_time倒序
+        query = query.order_by(
+            # 有suggestion的优先（suggestion不为空且不是"待管理员编辑建议"）
+            desc(
+                case(
+                    (
+                        and_(
+                            Post.suggestion.isnot(None),
+                            Post.suggestion != '',
+                            Post.suggestion != '待管理员编辑建议'
+                        ),
+                        1
+                    ),
+                    else_=0
+                )
+            ),
+            # 按更新时间倒序，如果updated_at为空则按publish_time倒序
+            desc(func.coalesce(Post.updated_at, Post.publish_time))
+        )
 
         # 分页
         total = query.count()
@@ -189,6 +224,7 @@ class PostService:
         take_profit: Optional[float] = None,
         strike_price: Optional[float] = None,
         current_price: Optional[float] = None,
+        direction: Optional[str] = None,
         suggestion: Optional[str] = None,
         content: Optional[str] = None,
         k_line_image: Optional[str] = None,
@@ -230,6 +266,8 @@ class PostService:
             post.strike_price = strike_price
         if current_price is not None:
             post.current_price = current_price
+        if direction is not None:
+            post.direction = direction
         if suggestion is not None:
             post.suggestion = suggestion
         if content is not None:

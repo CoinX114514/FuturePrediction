@@ -1,7 +1,7 @@
 /** 应用主组件。
  *
  * 这是应用的根组件，负责路由配置和全局状态管理。
- */
+*/
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { isAuthenticated } from './services/authService'
@@ -11,7 +11,7 @@ import Dashboard from './pages/Dashboard'
 import AdminPublish from './pages/AdminPublish'
 import Account from './pages/Account'
 import SignalDetail from './pages/SignalDetail'
-import './App.css'
+import Search from './pages/Search'
 
 /** 是否为开发模式。 */
 const isDevMode = (import.meta as any).env?.MODE === 'development' || 
@@ -44,14 +44,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * @returns JSX 元素。
  */
 function App() {
-  const renderStart = Date.now()
-  console.log("[App] 开始渲染 App 组件...")
+  /** 是否已登录，用于默认路由重定向。 */
+  const isLoggedIn = isAuthenticated()
   
-  try {
-    const app = (
-      <BrowserRouter>
+  return (
+    <BrowserRouter>
       <Routes>
-        {/* 登录页 */}
+        {/* 登录页 - 放在最前面，确保优先匹配 */}
         <Route path="/login" element={<Login />} />
         
         {/* 注册页 */}
@@ -87,6 +86,16 @@ function App() {
           }
         />
 
+        {/* 搜索页 */}
+        <Route
+          path="/search"
+          element={
+            <ProtectedRoute>
+              <Search />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 详情页 */}
         <Route
           path="/signal/:id"
@@ -97,27 +106,20 @@ function App() {
           }
         />
         
-        {/* 默认重定向到仪表板 */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        {/* 默认重定向：登录去仪表盘，未登录去登录页 */}
+        <Route 
+          path="/" 
+          element={<Navigate to={isLoggedIn ? '/dashboard' : '/login'} replace />} 
+        />
         
-        {/* 404 页面 */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* 404 页面：未登录跳转到登录页 */}
+        <Route 
+          path="*" 
+          element={<Navigate to="/login" replace />} 
+        />
       </Routes>
     </BrowserRouter>
-    )
-    
-    const elapsed = Date.now() - renderStart
-    console.log(`[App] App 组件渲染完成，耗时: ${elapsed}ms`)
-    return app
-  } catch (error) {
-    console.error("[App] 渲染 App 组件时出错:", error)
-    return (
-      <div style={{ padding: '20px', color: 'red' }}>
-        <h1>应用加载错误</h1>
-        <pre>{String(error)}</pre>
-      </div>
-    )
-  }
+  )
 }
 
 export default App
