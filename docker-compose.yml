@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  # 数据库服务
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: futures_trading
+    # 不对外暴露端口，只在 Docker 网络内访问
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端服务
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env  # 从 .env 文件加载环境变量（包含 TUSHARE_TOKEN）
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/futures_trading
+      # 从 Tushare 拉取期货行情（含铁矿石等）必须配置有效 Token，否则现价会为空
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
+      # 现价每 5 分钟刷新并写入 DB，主页/详情/K 线图通过接口获取同步数据
+      PRICE_UPDATE_INTERVAL_MINUTES: ${PRICE_UPDATE_INTERVAL_MINUTES:-5}
+    depends_on:
+      db:
+        condition: service_healthy
+    # 不对外暴露端口，只通过 Nginx 访问
+    # 内部仍然监听 8000 端口供 Nginx 代理使用
+
+  # 前端服务（生产构建，使用 Nginx 提供静态文件）
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # 构建时设置 API 基础 URL 为相对路径，通过 Nginx 代理
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    depends_on:
+      - backend
+    # 不对外暴露端口，只通过 Nginx 访问
+
+  # Nginx 反向代理服务
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    restart: unless-stopped
+    ports:
+      # 只对外暴露 80 端口
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
+    volumes:
+      # 挂载日志目录（可选，用于查看访问日志）
+      - nginx_logs:/var/log/nginx
+
+volumes:
+  postgres_data:
+  nginx_logs:

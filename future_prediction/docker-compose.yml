@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  db:
+    # 使用官方 Postgres 镜像，依赖 /etc/docker/daemon.json 中的阿里云加速器
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: futures_trading
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    # 使用本地已构建好的后端镜像，避免在 ECS 上重新拉取/构建
+    image: future_prediction-backend:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/futures_trading
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+
+  frontend:
+    # 使用本地已构建好的前端镜像
+    image: future_prediction-frontend:latest
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres_data:
