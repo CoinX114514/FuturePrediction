@@ -270,7 +270,7 @@ async def update_post(
 ):
     """更新帖子。
 
-    仅允许管理员/超级管理员编辑自己创建的帖子。
+    管理员（user_role >= 3）可编辑任意帖子；非管理员仅能编辑本人帖子。
     """
     if current_user.user_role < 3:
         raise HTTPException(
