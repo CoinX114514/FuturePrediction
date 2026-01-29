@@ -246,13 +246,14 @@ class PostService:
         if not post:
             return None
 
-        # 权限：必须是作者本人且具备管理员权限
-        if post.author_id != user_id:
+        # 权限：管理员（user_role >= 3）可编辑任意帖子；非管理员仅能编辑本人帖子
+        current_user = self.db.query(User).filter(User.user_id == user_id).first()
+        if not current_user:
             return None
-
-        author = self.db.query(User).filter(User.user_id == user_id).first()
-        if not author or author.user_role < 3:
-            return None
+        if current_user.user_role >= 3:
+            pass  # 管理员/超级管理员可编辑任意帖子
+        elif post.author_id != user_id:
+            return None  # 非管理员只能编辑自己的帖子
 
         if title is not None:
             post.title = title

@@ -71,6 +71,22 @@ export default function Search() {
     
     performSearch()
   }, [searchKeyword, loading, userInfo]) // 依赖搜索关键词、加载状态和用户信息
+
+  /** 现价与后端同步：有搜索结果时每 5 分钟刷新列表 */
+  const PRICE_REFRESH_INTERVAL_MS = 5 * 60 * 1000
+  useEffect(() => {
+    if (!userInfo || loading || !searchKeyword.trim()) return
+    const refresh = async () => {
+      try {
+        const response = await getPosts(1, 100, undefined, searchKeyword.trim())
+        setPosts(response.posts || [])
+      } catch {
+        // 静默失败，保留当前列表
+      }
+    }
+    const timer = setInterval(refresh, PRICE_REFRESH_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [searchKeyword, userInfo, loading])
   
   /** 处理搜索输入变化。 */
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
