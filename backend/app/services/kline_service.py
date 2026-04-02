@@ -1,15 +1,19 @@
 """K 线数据服务。
 
-负责从 Tushare 获取期货合约的历史 K 线数据（OHLCV）。
+负责从行情后端（Tushare 或本地 JSON）组装期货历史 K 线（OHLCV）。
 """
 
 import logging
+import re
+import time
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 
-from app.services.tushare_service import TushareService
+from app.services.market_backend import get_market_backend
+from app.database.connection import SessionLocal
+from app.database.models import FuturesContract
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -18,12 +22,12 @@ logger = logging.getLogger(__name__)
 class KlineService:
     """K 线数据服务类。
 
-    提供从 Tushare 获取期货历史 K 线数据的功能。
+    数据源由 MARKET_DATA_SOURCE 决定。
     """
     
     def __init__(self):
         """初始化 K 线服务。"""
-        self.tushare_service = TushareService()
+        self.market_data_service = get_market_backend()
 
     def get_futures_daily_kline(
         self,
@@ -34,7 +38,7 @@ class KlineService:
     ) -> List[Dict]:
         """获取期货合约的历史日线 K 线数据。
 
-        使用 Tushare 的 fut_daily 接口获取历史日线数据。
+        使用 Tushare fut_daily 或 JSON klines 拉取日线。
 
         Args:
             contract_code: 合约代码，如 "IF2603"、"CU2601"。
@@ -53,6 +57,7 @@ class KlineService:
                     "volume": 123456       # 成交量（可选）
                 }
         """
+        t_wall = time.monotonic()
         try:
             # 统一为去掉首尾空格、大写的合约代码（与现价逻辑一致）
             code_clean = (contract_code or "").strip().upper()
@@ -72,19 +77,74 @@ class KlineService:
 
             logger.info(f"获取日期范围: {start_date} 到 {end_date} (请求 {period} 天数据)")
 
-            # 将合约代码转换为 Tushare 格式（如 PP2603 -> PP2603.DCE）
-            ts_code = self.tushare_service.convert_contract_code_to_ts_code(code_clean)
+            # 若库里有该合约记录（futures_sync 写入），优先用语义正确的交易所推断 ts_code，避免 PT/PR 等默认误判为 SHF
+            exchange_hint = None
+            _db = SessionLocal()
+            try:
+                _fc = (
+                    _db.query(FuturesContract)
+                    .filter(FuturesContract.contract_code == code_clean)
+                    .first()
+                )
+                if _fc and getattr(_fc, "exchange_code", None):
+                    exchange_hint = str(_fc.exchange_code).strip().upper() or None
+            finally:
+                _db.close()
+
+            ts_code = self.market_data_service.convert_contract_code_to_ts_code(
+                code_clean, exchange_hint
+            )
+            logger.info(
+                "K线 ts_code=%s（合约=%s，exchange_hint=%s）",
+                ts_code,
+                code_clean,
+                exchange_hint or "无，走品种映射/默认",
+            )
             
-            # 使用 Tushare fut_daily 拉取历史日线（按 ts_code + 日期区间）
-            kline_data = self.tushare_service.get_futures_kline(
+            kline_data = self.market_data_service.get_futures_kline(
                 ts_code=ts_code,
                 start_date=start_date,
                 end_date=end_date,
                 period=period
             )
 
+            # 库中 futures_contracts.exchange 若与 Tushare 不一致（如 PT 误存为 CZCE），首次会空表；再按品种映射不重试 exchange_hint
+            if (
+                (kline_data is None or not isinstance(kline_data, pd.DataFrame) or kline_data.empty)
+                and exchange_hint
+            ):
+                ts_fb = self.market_data_service.convert_contract_code_to_ts_code(code_clean, None)
+                if ts_fb != ts_code:
+                    logger.warning(
+                        "K线首次无数据，忽略库交易所=%s，改用品种映射 ts_code=%s",
+                        exchange_hint,
+                        ts_fb,
+                    )
+                    ts_code = ts_fb
+                    kline_data = self.market_data_service.get_futures_kline(
+                        ts_code=ts_code,
+                        start_date=start_date,
+                        end_date=end_date,
+                        period=period,
+                    )
+
+            # 广期所铂 PT 曾易被误判为郑商所/上期所；最后再强制试 GFE
+            if (kline_data is None or not isinstance(kline_data, pd.DataFrame) or kline_data.empty) and re.match(
+                r"^PT\d+", code_clean
+            ):
+                ts_pt = f"{code_clean}.GFE"
+                if ts_pt != ts_code:
+                    logger.warning("K线仍无数据，PT 合约强制尝试广期所 ts_code=%s", ts_pt)
+                    ts_code = ts_pt
+                    kline_data = self.market_data_service.get_futures_kline(
+                        ts_code=ts_code,
+                        start_date=start_date,
+                        end_date=end_date,
+                        period=period,
+                    )
+
             if kline_data is None or not isinstance(kline_data, pd.DataFrame) or kline_data.empty:
-                logger.warning(f"无法获取合约 {code_clean} 的 K 线数据，ts_code={ts_code}")
+                logger.warning(f"无法获取合约 {code_clean} 的 K 线数据，最后 ts_code={ts_code}")
                 return []
 
             logger.info(f"成功获取 {len(kline_data)} 条 K 线数据")
@@ -92,7 +152,7 @@ class KlineService:
             # 处理数据：转换为标准格式
             kline_list = []
             
-            # Tushare 返回的列名
+            # 与 fut_daily 风格一致的列名（JSON 转 DataFrame 后相同）
             date_col = 'trade_date'
             open_col = 'open'
             high_col = 'high'
@@ -109,10 +169,10 @@ class KlineService:
             # 转换数据
             for _, row in kline_data.iterrows():
                 try:
-                    # 处理日期（Tushare 返回 YYYYMMDD 格式）
+                    # 处理日期（YYYYMMDD 字符串）
                     date_value = row[date_col]
                     if isinstance(date_value, str):
-                        # Tushare 返回 YYYYMMDD 格式
+                        # 八位数字 YYYYMMDD
                         if len(date_value) == 8:
                             time_str = f"{date_value[:4]}-{date_value[4:6]}-{date_value[6:8]}"
                         else:
@@ -122,19 +182,49 @@ class KlineService:
                             except:
                                 time_str = str(date_value)
                     elif pd.notna(date_value):
-                        time_str = pd.to_datetime(str(date_value)).strftime("%Y-%m-%d")
+                        if isinstance(date_value, float):
+                            date_value = int(date_value)
+                        ds = str(date_value).strip()
+                        if len(ds) >= 8 and ds[:8].isdigit():
+                            ds = ds[:8]
+                            time_str = f"{ds[:4]}-{ds[4:6]}-{ds[6:8]}"
+                        else:
+                            time_str = pd.to_datetime(ds).strftime("%Y-%m-%d")
                     else:
                         continue
                     
-                    # 处理价格（转换为浮点数）
+                    # 处理价格（转换为浮点数）；Tushare 部分行 OHLC 空缺时用 settle 补全
+                    settle_price = None
+                    if 'settle' in kline_data.columns and pd.notna(row.get('settle')):
+                        try:
+                            settle_price = float(row['settle'])
+                            if np.isnan(settle_price):
+                                settle_price = None
+                        except (TypeError, ValueError):
+                            settle_price = None
+
                     open_price = float(row[open_col]) if pd.notna(row[open_col]) else None
                     high_price = float(row[high_col]) if pd.notna(row[high_col]) else None
                     low_price = float(row[low_col]) if pd.notna(row[low_col]) else None
                     close_price = float(row[close_col]) if pd.notna(row[close_col]) else None
-                    
-                    # 检查价格是否有效
-                    if any(p is None or np.isnan(p) for p in [open_price, high_price, low_price, close_price]):
+
+                    if open_price is None or np.isnan(open_price):
+                        open_price = settle_price
+                    if high_price is None or np.isnan(high_price):
+                        high_price = settle_price
+                    if low_price is None or np.isnan(low_price):
+                        low_price = settle_price
+                    if close_price is None or np.isnan(close_price):
+                        close_price = settle_price
+
+                    if any(p is None or (isinstance(p, float) and np.isnan(p)) for p in [open_price, high_price, low_price, close_price]):
                         continue
+
+                    # lightweight-charts 要求 high/low 包住实体与影线，源数据偶发错乱时做一次修正
+                    high_price = float(max(high_price, open_price, close_price))
+                    low_price = float(min(low_price, open_price, close_price))
+                    if high_price < low_price:
+                        high_price = low_price = float(close_price)
                     
                     # 处理成交量（可选）
                     volume = None
@@ -163,8 +253,12 @@ class KlineService:
                     logger.warning(f"处理 K 线数据行时出错: {str(e)}")
                     continue
             
-            # 按日期排序（从早到晚）
+            # 按日期排序（从早到晚）；同一日多行时保留最后一行（避免 lightweight-charts 报重复时间）
             kline_list.sort(key=lambda x: x["time"])
+            dedup: Dict[str, dict] = {}
+            for it in kline_list:
+                dedup[it["time"]] = it
+            kline_list = [dedup[k] for k in sorted(dedup.keys())]
             
             # 记录实际获取到的日期范围
             if kline_list:
@@ -179,11 +273,25 @@ class KlineService:
             else:
                 logger.warning("处理后的 K 线数据为空")
             
+            elapsed_ms = (time.monotonic() - t_wall) * 1000
+            logger.info(
+                "[K线服务] 合约=%s 总耗时=%.0fms 输出条数=%s",
+                code_clean,
+                elapsed_ms,
+                len(kline_list),
+            )
             return kline_list
             
         except Exception as e:
             code_clean = (contract_code or "").strip().upper()
-            logger.error(f"获取 K 线数据时发生错误，合约代码: {code_clean}, 错误: {str(e)}", exc_info=True)
+            elapsed_ms = (time.monotonic() - t_wall) * 1000
+            logger.error(
+                "获取 K 线数据时发生错误，合约代码: %s, 耗时=%.0fms, 错误: %s",
+                code_clean,
+                elapsed_ms,
+                str(e),
+                exc_info=True,
+            )
             return []
 
     def get_futures_kline_for_chart(

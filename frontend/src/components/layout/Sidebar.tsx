@@ -17,11 +17,12 @@ export default function Sidebar({ user }: SidebarProps) {
   // 检查是否为管理员 (user_role >= 3)
   const isAdmin = user?.user_role >= 3 
 
-  /** 仅保留浏览与账户；编辑帖子从详情页底部「编辑内容」进入，不再提供单独发布入口 */
+  /** 仅保留浏览与账户；编辑帖子从详情页底部「编辑内容」进入，不再提供单独发布入口；使用教程供零基础用户查阅 */
   const items: SidebarItem[] = [
     { name: '主页', path: '/dashboard' },
     { name: '搜索合约', path: '/search' },
     { name: '查看账户', path: '/account' },
+    { name: '使用教程', path: '/guide' },
   ]
 
   return (

@@ -1,9 +1,8 @@
 """期货合约同步服务。
 
-负责从 Tushare 获取所有可用期货合约，并自动创建对应的帖子卡片。
+负责从 akshare 获取可用期货合约，并自动创建对应的帖子卡片。
 
-注意：此服务已被 sync_tushare_futures_to_db.py 脚本替代，建议使用脚本进行同步。
-保留此服务以保持向后兼容性。
+注意：行情现价/K 线已改为本地 JSON（MarketDataService），与合约列表来源独立。
 """
 
 import logging
@@ -11,6 +10,7 @@ import re
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timezone, date, timedelta
 import pandas as pd
+import akshare as ak
 
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -18,7 +18,6 @@ from sqlalchemy import and_
 from app.database.models import Post, User
 from app.services.post_service import PostService
 from app.services.price_update_service import PriceUpdateService
-from app.services.tushare_service import TushareService
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -52,9 +51,7 @@ FUTURES_SYMBOL_NAMES = {
 class FuturesSyncService:
     """期货合约同步服务类。
 
-    负责从 Tushare 获取期货合约列表，并自动创建对应的帖子。
-    
-    注意：建议使用 sync_tushare_futures_to_db.py 脚本进行同步，此服务保留用于向后兼容。
+    负责从 akshare 获取期货合约列表，并自动创建对应的帖子。
     """
 
     def __init__(self, db: Session):
@@ -66,7 +63,6 @@ class FuturesSyncService:
         self.db = db
         self.post_service = PostService(db)
         self.price_service = PriceUpdateService(db)
-        self.tushare_service = TushareService()
 
     def parse_contract_date(self, contract_code: str) -> Tuple[Optional[int], Optional[int]]:
         """解析合约代码中的年份和月份。

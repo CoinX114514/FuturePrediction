@@ -5,10 +5,7 @@
 
 import axios from 'axios'
 
-/** API 基础 URL。 */
-// 在开发环境中，使用相对路径通过 vite 代理；生产环境使用环境变量或默认值
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 
-  (import.meta.env.MODE === 'development' ? '/api' : 'http://localhost:8000/api')
+import { API_BASE_URL } from '../constants/apiBaseUrl'
 
 /** 创建 axios 实例。 */
 const apiClient = axios.create({
@@ -16,7 +13,8 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10秒超时
+  /** 避免弱网环境下 /auth/me 等误报超时 */
+  timeout: 30000,
 })
 
 /**
@@ -188,9 +186,7 @@ export async function getCurrentUser(): Promise<UserInfo> {
   const startTime = Date.now()
   
   try {
-    const response = await apiClient.get('/v1/auth/me', {
-      timeout: 8000, // 8秒超时，与 Dashboard 的超时时间一致
-    })
+    const response = await apiClient.get('/v1/auth/me')
     const elapsed = Date.now() - startTime
     console.log(`[authService] 获取用户信息成功，耗时: ${elapsed}ms`, response.data)
     return response.data

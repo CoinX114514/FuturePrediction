@@ -13,7 +13,7 @@ import os
 import re
 import logging
 from typing import Optional, Dict, List
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import pandas as pd
 import numpy as np
 
@@ -58,24 +58,87 @@ class TushareService:
         if pro is None:
             raise ValueError("Tushare Pro API 未初始化，请检查 TUSHARE_TOKEN 环境变量")
 
-    def get_futures_basic_info(self, exchange: str = '') -> Optional[pd.DataFrame]:
-        """获取期货合约基本信息。
-        
+    # Tushare fut_basic 要求按交易所查询；官方交易所枚举见文档 doc_id=135
+    FUT_EXCHANGES = ('CFFEX', 'DCE', 'CZCE', 'SHFE', 'INE', 'GFEX')
+
+    def get_futures_basic_info(
+        self,
+        exchange: str = '',
+        fut_type: str = '1',
+    ) -> Optional[pd.DataFrame]:
+        """获取期货合约基本信息（fut_basic）。
+
+        当 ``exchange`` 为空时，依次请求 CFFEX/DCE/CZCE/SHFE/INE/GFEX 并合并结果，
+        避免只传空 exchange 时接口不返回全市场数据。
+
         Args:
-            exchange: 交易所代码，空字符串表示获取所有交易所。
-        
+            exchange: 交易所代码；空字符串表示六大所全拉。
+            fut_type: 合约类型，``1``=普通在交易的月份合约；``2``=主力与连续；``''``=不设过滤（与 Tushare 默认一致）。
+
         Returns:
-            Optional[pd.DataFrame]: 期货合约基本信息 DataFrame。
+            Optional[pd.DataFrame]: 去重后的合约基本信息；失败返回 None。
         """
+        fields = (
+            'ts_code,symbol,exchange,name,fut_code,multiplier,trade_unit,per_unit,'
+            'quote_unit,quote_unit_desc,list_date,delist_date,last_ddate'
+        )
         try:
-            df = pro.fut_basic(
-                exchange=exchange,
-                fut_type='',
-                fields='ts_code,symbol,exchange,name,fut_code,multiplier,trade_unit,per_unit,quote_unit,quote_unit_desc,list_date,delist_date,last_ddate'
-            )
-            return df
+            if exchange:
+                df = pro.fut_basic(
+                    exchange=exchange,
+                    fut_type=fut_type,
+                    fields=fields,
+                )
+                return df
+
+            frames: List[pd.DataFrame] = []
+            for ex in self.FUT_EXCHANGES:
+                try:
+                    part = pro.fut_basic(exchange=ex, fut_type=fut_type, fields=fields)
+                    if part is not None and isinstance(part, pd.DataFrame) and not part.empty:
+                        frames.append(part)
+                except Exception as ex_err:
+                    logger.warning('fut_basic 交易所=%s 失败: %s', ex, ex_err)
+            if not frames:
+                return None
+            out = pd.concat(frames, ignore_index=True)
+            out = out.drop_duplicates(subset=['ts_code'], keep='last')
+            logger.info('fut_basic 合并完成，共 %s 条（六大所 fut_type=%s）', len(out), fut_type or '(全部)')
+            return out
         except Exception as e:
             logger.error(f"获取期货合约基本信息失败: {e}")
+            return None
+
+    def get_fut_main_mapping_for_latest_trade(self, max_calendar_lookback: int = 15) -> Optional[pd.DataFrame]:
+        """获取最近可用的「交易日」对应的主力月合约映射（fut_mapping）。
+
+        按 Tushare 文档，传入 ``trade_date`` 可取得该日各连续/品种指向的 ``mapping_ts_code``（真实在交易的月份合约）。
+        非交易日会空表，故向前最多回溯 ``max_calendar_lookback`` 个自然日重试。
+
+        Args:
+            max_calendar_lookback: 从今日起向前尝试的自然日层数。
+
+        Returns:
+            含 ``mapping_ts_code`` 等列的 DataFrame；全部失败返回 None。
+        """
+        try:
+            today0 = datetime.now().date()
+            for delta in range(0, max_calendar_lookback):
+                d = (today0 - timedelta(days=delta)).strftime('%Y%m%d')
+                try:
+                    df = pro.fut_mapping(trade_date=d)
+                    if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
+                        if 'mapping_ts_code' not in df.columns:
+                            logger.warning('fut_mapping 返回无 mapping_ts_code: %s', list(df.columns))
+                            return None
+                        logger.info('fut_mapping 使用 trade_date=%s，行数=%s', d, len(df))
+                        return df
+                except Exception as ex:
+                    logger.warning('fut_mapping trade_date=%s 异常: %s', d, ex)
+            logger.error('fut_mapping 最近 %s 个自然日内均未取到数据', max_calendar_lookback)
+            return None
+        except Exception as e:
+            logger.error('获取 fut_mapping 失败: %s', e)
             return None
 
     def get_futures_daily(self, trade_date: Optional[str] = None, ts_code: Optional[str] = None) -> Optional[pd.DataFrame]:
@@ -336,14 +399,15 @@ class TushareService:
             'UR': 'ZCE', 'SA': 'ZCE', 'PF': 'ZCE', 'PK': 'ZCE', 'LH': 'ZCE', 'RI': 'ZCE',
             'LR': 'ZCE', 'JR': 'ZCE', 'PM': 'ZCE', 'WH': 'ZCE', 'CY': 'ZCE', 'PL': 'ZCE',
             'SH': 'ZCE',
+            'PR': 'ZCE',  # 郑商所瓶级切片（勿与广期所铂 PT 混淆）
             # 上期所 SHFE -> SHF
             'CU': 'SHF', 'AL': 'SHF', 'ZN': 'SHF', 'PB': 'SHF', 'NI': 'SHF', 'SN': 'SHF',
             'AU': 'SHF', 'AG': 'SHF', 'RB': 'SHF', 'HC': 'SHF', 'SS': 'SHF', 'BU': 'SHF',
             'RU': 'SHF', 'FU': 'SHF', 'WR': 'SHF', 'SP': 'SHF', 'AO': 'SHF', 'BC': 'SHF', 'BR': 'SHF',
             # 上期能源 INE -> INE
             'SC': 'INE', 'LU': 'INE', 'NR': 'INE', 'EC': 'INE',
-            # 广期所 GFEX -> GFE
-            'SI': 'GFE', 'LC': 'GFE',
+            # 广期所 GFEX -> GFE（铂 PT、钯 PD 等）
+            'SI': 'GFE', 'LC': 'GFE', 'PT': 'GFE', 'PD': 'GFE',
         }
         
         if symbol in SYMBOL_EXCHANGE_SUFFIX:

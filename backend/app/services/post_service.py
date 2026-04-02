@@ -247,11 +247,11 @@ class PostService:
             return None
 
         # 权限：管理员（user_role >= 3）可编辑任意帖子；非管理员仅能编辑本人帖子
-        current_user = self.db.query(User).filter(User.user_id == user_id).first()
-        if not current_user:
+        author = self.db.query(User).filter(User.user_id == user_id).first()
+        if not author:
             return None
-        if current_user.user_role >= 3:
-            pass  # 管理员/超级管理员可编辑任意帖子
+        if author.user_role >= 3:
+            pass  # 管理员可编辑任意帖子
         elif post.author_id != user_id:
             return None  # 非管理员只能编辑自己的帖子
 

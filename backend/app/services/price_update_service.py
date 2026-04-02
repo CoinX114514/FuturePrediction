@@ -1,6 +1,6 @@
 """价格更新服务。
 
-负责从 Tushare 获取期货实时价格并更新到数据库。
+负责从行情后端（Tushare 或本地 JSON）读取现价并更新到数据库。
 """
 
 import logging
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from app.database.models import Post, FuturesContract
-from app.services.tushare_service import TushareService
+from app.services.market_backend import get_market_backend
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class PriceUpdateService:
     """价格更新服务类。
 
-    提供从 Tushare 获取期货实时价格并更新到数据库的功能。
+    由 get_market_backend() 提供价格，写入 posts.current_price。
     """
 
     def __init__(self, db: Session):
@@ -32,10 +32,10 @@ class PriceUpdateService:
             db: 数据库会话。
         """
         self.db = db
-        self.tushare_service = TushareService()
+        self.market_data_service = get_market_backend()
 
     def get_futures_spot_price(self, contract_code: str) -> Optional[float]:
-        """从 Tushare 获取指定合约的实时价格。
+        """从行情 JSON 读取指定合约价格。
 
         Args:
             contract_code: 合约代码，如 "CU2601" 或 "CU2601.SHF"。
@@ -43,10 +43,10 @@ class PriceUpdateService:
         Returns:
             Optional[float]: 实时价格，如果获取失败则返回 None。
         """
-        logger.info(f"正在从 Tushare 获取期货实时行情，合约代码: {contract_code}")
+        logger.info(f"正在从行情 JSON 获取价格，合约代码: {contract_code}")
         
         try:
-            price = self.tushare_service.get_futures_price(contract_code)
+            price = self.market_data_service.get_futures_price(contract_code)
             if price is not None:
                 logger.info(f"✓ 成功获取价格: 合约代码={contract_code}, 价格={price}")
             else:
@@ -102,7 +102,7 @@ class PriceUpdateService:
     def _batch_get_prices(self, contract_codes: List[str]) -> Dict[str, Optional[float]]:
         """批量获取多个合约的价格。
 
-        优化版本：一次性获取所有价格，避免重复调用 Tushare 接口。
+        批量调用 MarketDataService.batch_get_futures_prices。
 
         Args:
             contract_codes: 合约代码列表，如 ["CU2601", "IF2603"]。
@@ -115,7 +115,7 @@ class PriceUpdateService:
         logger.info(f"批量获取价格，合约数量: {len(unique_codes)}")
         
         try:
-            price_map = self.tushare_service.batch_get_futures_prices(unique_codes)
+            price_map = self.market_data_service.batch_get_futures_prices(unique_codes)
             logger.info(f"批量获取完成，成功获取 {len(price_map)}/{len(unique_codes)} 个合约的价格")
             return price_map
         except Exception as e:
@@ -167,6 +167,10 @@ class PriceUpdateService:
 
             # 批量获取所有价格
             price_map = self._batch_get_prices(contract_codes)
+            # 统一大写键，兼容 Tushare/JSON 返回键与库中合约写法
+            norm_prices = {
+                (k or "").strip().upper(): v for k, v in price_map.items()
+            }
             
             # 批量更新数据库
             success_count = 0
@@ -174,8 +178,9 @@ class PriceUpdateService:
             updated_at = datetime.utcnow()
             
             for contract_code, posts_list in post_contract_map.items():
-                if contract_code in price_map and price_map[contract_code] is not None:
-                    price = price_map[contract_code]
+                nk = (contract_code or "").strip().upper()
+                if nk in norm_prices and norm_prices[nk] is not None:
+                    price = norm_prices[nk]
                     # 更新所有使用该合约的帖子
                     for post in posts_list:
                         try:

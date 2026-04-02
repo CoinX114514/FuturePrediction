@@ -158,12 +158,18 @@ export default function Login() {
           </button>
         </form>
 
-        {/* 注册链接 */}
-        <div className="mt-6 text-center">
+        {/* 注册链接与使用说明入口 */}
+        <div className="mt-6 text-center space-y-2">
           <p className="text-sm text-gray-600">
             还没有账户？{' '}
             <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
               立即注册
+            </Link>
+          </p>
+          <p className="text-sm text-gray-600">
+            第一次使用？{' '}
+            <Link to="/guide" className="text-blue-600 hover:text-blue-700 font-medium">
+              查看快速使用说明
             </Link>
           </p>
         </div>

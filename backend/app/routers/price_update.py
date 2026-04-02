@@ -1,25 +1,55 @@
 """价格更新路由模块。
 
 提供价格更新相关的 API 接口。
+
+设计原因：PriceUpdateService 内部会同步读 JSON/数据库，若在 async 路由中直接执行会阻塞事件循环，
+导致其它 API 超时。故在独立线程中执行，并在该线程内新建数据库会话（Session 非线程安全）。
 """
 
-from typing import Optional
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
-from app.database.connection import get_db
+from app.database.connection import SessionLocal
 from app.database.models import User
 from app.middleware.auth import get_current_user
 from app.services.price_update_service import PriceUpdateService
 from app.services.scheduler_service import scheduler_service
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _update_all_posts_price_sync() -> dict:
+    """在线程内执行批量更新现价（独立 DB 会话）。"""
+    db = SessionLocal()
+    try:
+        return PriceUpdateService(db).update_all_posts_price()
+    finally:
+        db.close()
+
+
+def _update_by_contract_sync(contract_code: str) -> dict:
+    """在线程内按合约更新现价。"""
+    db = SessionLocal()
+    try:
+        return PriceUpdateService(db).update_posts_by_contract_code(contract_code)
+    finally:
+        db.close()
+
+
+def _update_single_post_sync(post_id: int) -> bool:
+    """在线程内更新单帖现价。"""
+    db = SessionLocal()
+    try:
+        return PriceUpdateService(db).update_post_price(post_id)
+    finally:
+        db.close()
 
 
 @router.post("/update-all", status_code=status.HTTP_200_OK)
 async def update_all_posts_price(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
     """批量更新所有帖子的现价。
 
@@ -27,7 +57,6 @@ async def update_all_posts_price(
 
     Args:
         current_user: 当前登录用户。
-        db: 数据库会话。
 
     Returns:
         dict: 更新结果统计信息。
@@ -42,8 +71,13 @@ async def update_all_posts_price(
             detail="只有管理员可以更新价格",
         )
 
-    price_service = PriceUpdateService(db)
-    result = price_service.update_all_posts_price()
+    result = await run_in_threadpool(_update_all_posts_price_sync)
+    logger.info(
+        "[价格更新API] update-all total=%s success=%s failed=%s",
+        result.get("total"),
+        result.get("success"),
+        result.get("failed"),
+    )
 
     return {
         "message": "价格更新完成",
@@ -57,7 +91,6 @@ async def update_all_posts_price(
 async def update_posts_by_contract(
     contract_code: str = Query(..., description="合约代码，如 IF2312"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
     """按合约代码更新所有相关帖子的现价。
 
@@ -66,7 +99,6 @@ async def update_posts_by_contract(
     Args:
         contract_code: 合约代码。
         current_user: 当前登录用户。
-        db: 数据库会话。
 
     Returns:
         dict: 更新结果统计信息。
@@ -81,8 +113,7 @@ async def update_posts_by_contract(
             detail="只有管理员可以更新价格",
         )
 
-    price_service = PriceUpdateService(db)
-    result = price_service.update_posts_by_contract_code(contract_code)
+    result = await run_in_threadpool(_update_by_contract_sync, contract_code)
 
     return {
         "message": f"合约 {contract_code} 的价格更新完成",
@@ -97,7 +128,6 @@ async def update_posts_by_contract(
 async def update_single_post_price(
     post_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
     """更新单个帖子的现价。
 
@@ -106,7 +136,6 @@ async def update_single_post_price(
     Args:
         post_id: 帖子ID。
         current_user: 当前登录用户。
-        db: 数据库会话。
 
     Returns:
         dict: 更新结果。
@@ -121,8 +150,7 @@ async def update_single_post_price(
             detail="只有管理员可以更新价格",
         )
 
-    price_service = PriceUpdateService(db)
-    success = price_service.update_post_price(post_id)
+    success = await run_in_threadpool(_update_single_post_sync, post_id)
 
     if not success:
         raise HTTPException(

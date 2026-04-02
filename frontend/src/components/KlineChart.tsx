@@ -3,13 +3,18 @@
 使用 TradingView lightweight-charts 展示期货合约的历史 K 线图。
 */
 
-import { useEffect, useRef } from 'react'
-import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, CandlestickSeries } from 'lightweight-charts'
+import { useEffect, useRef, useState } from 'react'
+import {
+  createChart,
+  IChartApi,
+  ISeriesApi,
+  CandlestickData,
+  Time,
+  CandlestickSeries,
+} from 'lightweight-charts'
 import axios from 'axios'
 
-/** API 基础 URL。 */
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 
-  (import.meta.env.MODE === 'development' ? '/api' : 'http://localhost:8000/api')
+import { API_BASE_URL } from '../constants/apiBaseUrl'
 
 /** 创建 axios 实例。 */
 const apiClient = axios.create({
@@ -17,7 +22,26 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  /** K 线数据量可能较大，与 Nginx proxy_read 对齐 */
+  timeout: 120000,
 })
+
+/**
+ * lightweight-charts v5 日线建议使用 BusinessDay 对象，避免部分环境下字符串 time 不渲染。
+ */
+function toChartTime(timeStr: string): Time {
+  const parts = timeStr.trim().split('-').map((x) => parseInt(x, 10))
+  if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
+    return { year: parts[0], month: parts[1], day: parts[2] } as Time
+  }
+  return timeStr as Time
+}
+
+function resolveChartWidth(el: HTMLDivElement | null): number {
+  if (!el) return 320
+  const w = el.clientWidth || el.getBoundingClientRect().width
+  return Math.max(Math.floor(w), 320)
+}
 
 // 添加请求拦截器，自动添加 Token
 apiClient.interceptors.request.use(
@@ -62,13 +86,16 @@ export default function KlineChart({ contractCode, height = 400, period = 365 }:
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  /** 加载或渲染失败时的说明，避免空白无提示 */
+  const [chartError, setChartError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!chartContainerRef.current) return
+    setChartError(null)
 
     // 创建图表实例
     const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
+      width: resolveChartWidth(chartContainerRef.current),
       height: height,
       layout: {
         background: { color: '#ffffff' },
@@ -104,34 +131,56 @@ export default function KlineChart({ contractCode, height = 400, period = 365 }:
     // 获取 K 线数据
     const fetchKlineData = async () => {
       try {
-        const response = await apiClient.get(`/v1/kline/${contractCode}`, {
+        const response = await apiClient.get(`/v1/kline/${encodeURIComponent(contractCode)}`, {
           params: { period },
         })
 
-        const klineData: KlineData[] = response.data.data || []
+        const klineData: KlineData[] = response.data?.data || []
 
         if (klineData.length === 0) {
-          console.warn(`未找到合约 ${contractCode} 的 K 线数据`)
+          const msg = `未找到合约 ${contractCode} 的 K 线数据（后端返回空数组）`
+          console.warn(msg)
+          setChartError(msg)
           return
         }
 
-        // 转换数据格式为 lightweight-charts 需要的格式
         const chartData: CandlestickData[] = klineData.map((item) => ({
-          time: item.time as Time, // 日期字符串，如 "2024-01-01"
+          time: toChartTime(item.time),
           open: item.open,
           high: item.high,
           low: item.low,
           close: item.close,
         }))
 
-        // 设置数据
-        candlestickSeries.setData(chartData)
+        try {
+          candlestickSeries.setData(chartData)
+        } catch (e) {
+          console.error('lightweight-charts setData 失败（常见原因：重复 time 或 OHLC 无效）:', e)
+          setChartError(`K 线数据格式错误，无法绘图: ${e instanceof Error ? e.message : String(e)}`)
+          return
+        }
 
-        // 调整图表以适应数据
-        chart.timeScale().fitContent()
+        requestAnimationFrame(() => {
+          const el = chartContainerRef.current
+          if (el && chartRef.current) {
+            chartRef.current.applyOptions({ width: resolveChartWidth(el) })
+            chartRef.current.timeScale().fitContent()
+          }
+        })
+        setChartError(null)
       } catch (error: any) {
+        const detail = error?.response?.data?.detail
+        let msg =
+          typeof detail === 'string'
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join('; ')
+              : error?.message || ''
+        if (!msg) {
+          msg = '请求 K 线接口失败（请检查网络、后端是否配置 Tushare 或 JSON klines）'
+        }
         console.error('获取 K 线数据失败:', error)
-        // 可以在这里显示错误提示
+        setChartError(msg)
       }
     }
 
@@ -164,8 +213,13 @@ export default function KlineChart({ contractCode, height = 400, period = 365 }:
   }, [contractCode, height, period])
 
   return (
-    <div className="w-full">
-      <div ref={chartContainerRef} style={{ width: '100%', height: `${height}px` }} />
+    <div className="w-full space-y-2">
+      {chartError && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          K 线图：{chartError}
+        </div>
+      )}
+      <div ref={chartContainerRef} style={{ width: '100%', minWidth: '320px', height: `${height}px` }} />
     </div>
   )
 }

@@ -269,12 +269,18 @@ export default function Register() {
           </button>
         </form>
 
-        {/* 登录链接 */}
-        <div className="mt-6 text-center">
+        {/* 登录链接与使用说明入口 */}
+        <div className="mt-6 text-center space-y-2">
           <p className="text-sm text-gray-600">
             已有账户？{' '}
             <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
               立即登录
+            </Link>
+          </p>
+          <p className="text-sm text-gray-600">
+            第一次使用？{' '}
+            <Link to="/guide" className="text-blue-600 hover:text-blue-700 font-medium">
+              查看快速使用说明
             </Link>
           </p>
         </div>

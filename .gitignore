@@ -65,3 +65,6 @@ temp/
 # 临时文件
 future_prediction/*.tar
 future_prediction/*.tar.gz
+
+# 本地嵌套的同名项目副本，勿提交
+FuturePrediction-main/

@@ -7,6 +7,25 @@
     <title>期货价格趋势预测</title>
   </head>
   <body>
+    <!--
+      非安全上下文（http + 非公网 localhost）下浏览器不提供 crypto.randomUUID，
+      部分依赖在加载时会调用它。必须在任何 ES module 之前执行补丁。
+    -->
+    <script>
+      (function () {
+        try {
+          var c = globalThis.crypto
+          if (!c || typeof c.randomUUID === 'function') return
+          c.randomUUID = function () {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (ch) {
+              var r = (Math.random() * 16) | 0
+              var v = ch === 'x' ? r : (r & 0x3) | 0x8
+              return v.toString(16)
+            })
+          }
+        } catch (e) {}
+      })()
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -1,16 +1,13 @@
 import axios from 'axios'
 
-// 在开发环境中，强制使用相对路径通过 vite 代理；生产环境使用环境变量或默认值
-// 注意：开发环境必须使用相对路径 '/api' 以通过 vite 代理，避免 CORS 和认证问题
-const isDev = import.meta.env.MODE === 'development' || import.meta.env.DEV
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 
-  (isDev ? '/api' : 'http://localhost:8000/api')
+import { API_BASE_URL } from '../constants/apiBaseUrl'
 
 console.log('[adminUserService] 初始化 - MODE:', import.meta.env.MODE, 'DEV:', import.meta.env.DEV, 'API_BASE_URL:', API_BASE_URL)
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 30000,
 })
 
 function getToken(): string | null {

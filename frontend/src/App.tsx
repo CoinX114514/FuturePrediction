@@ -12,6 +12,7 @@ import AdminPublish from './pages/AdminPublish'
 import Account from './pages/Account'
 import SignalDetail from './pages/SignalDetail'
 import Search from './pages/Search'
+import Guide from './pages/Guide'
 
 /** 是否为开发模式。 */
 const isDevMode = (import.meta as any).env?.MODE === 'development' || 
@@ -55,7 +56,10 @@ function App() {
         
         {/* 注册页 */}
         <Route path="/register" element={<Register />} />
-        
+
+        {/* 快速使用说明（公开，无需登录） */}
+        <Route path="/guide" element={<Guide />} />
+
         {/* 仪表板（受保护） */}
         <Route
           path="/dashboard"
